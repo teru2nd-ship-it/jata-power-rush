@@ -1,0 +1,11 @@
+.git/
+tmp/
+tools/
+assets/enemies/source/
+assets/heroes/source/
+assets/backgrounds/*.png
+assets/enemies/ninja-duo.png
+assets/enemies/panda-ronin.png
+assets/enemies/panda-samurai-blue.png
+assets/enemies/panda-samurai-white.png
+*.md
