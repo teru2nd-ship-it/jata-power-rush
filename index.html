@@ -5,10 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>JATA POWER RUSH</title>
 <link rel="icon" href="data:,">
+<link rel="canonical" href="https://jata-power-rush.vercel.app/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@700;900&display=swap" rel="stylesheet">
 <style>
   * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { width:100%; height:100%; overflow:hidden; background:#080706; touch-action:none;
-    font-family:'Hiragino Kaku Gothic ProN','Yu Gothic',system-ui,sans-serif; }
+    font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',system-ui,sans-serif; }
   #game { display:block; width:100vw; height:100vh; }
 </style>
 </head>
@@ -16,8 +20,9 @@
 <canvas id="game"></canvas>
 <script>
 'use strict';
+const FONT_JP = '"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
 // =========================================================
-//  JATA POWER RUSH  —  小さい敵を食って、デカくなって、勝つ。
+//  JATA POWER RUSH  —  小さい数字を選び、力を高め、師範を越える。
 // ============================================================
 const cv = document.getElementById('game');
 const cx = cv.getContext('2d');
@@ -66,26 +71,88 @@ function resize(){
 }
 window.addEventListener('resize', resize); resize();
 
-// ---------- サウンド（WebAudio 簡易効果音） ----------
-let AC=null, muted=false;
-function beep(freq, dur, type='square', vol=0.15, slide=0){
-  if(muted) return;
+// ---------- サウンド（WebAudio BGM / 効果音） ----------
+let AC=null;
+let muted = localStorage.getItem('jataPowerRushMuted') === '1';
+let bgmTimer=null, bgmStep=0;
+const BGM_MELODY = [293.66,0,392.00,440.00,523.25,0,440.00,392.00,329.63,0,392.00,293.66,261.63,0,329.63,392.00];
+const BGM_BASS = [146.83,146.83,196.00,196.00,130.81,130.81,164.81,146.83];
+function ensureAudio(){
   try{
     if(!AC) AC = new (window.AudioContext||window.webkitAudioContext)();
-    const o=AC.createOscillator(), g=AC.createGain();
-    o.type=type; o.frequency.value=freq;
-    if(slide) o.frequency.linearRampToValueAtTime(freq+slide, AC.currentTime+dur);
-    g.gain.value=vol; g.gain.exponentialRampToValueAtTime(0.001, AC.currentTime+dur);
-    o.connect(g); g.connect(AC.destination);
-    o.start(); o.stop(AC.currentTime+dur);
-  }catch(e){}
+    if(AC.state==='suspended') AC.resume().catch(()=>{});
+    return AC;
+  }catch(e){ return null; }
 }
+function scheduleTone(freq,dur,type='square',vol=0.15,slide=0,when=0){
+  if(muted) return;
+  const ac=ensureAudio(); if(!ac) return;
+  const start=ac.currentTime+when;
+  const o=ac.createOscillator(), g=ac.createGain();
+  o.type=type; o.frequency.setValueAtTime(freq,start);
+  if(slide) o.frequency.linearRampToValueAtTime(Math.max(30,freq+slide),start+dur);
+  g.gain.setValueAtTime(0.001,start);
+  g.gain.exponentialRampToValueAtTime(Math.max(0.001,vol),start+0.012);
+  g.gain.exponentialRampToValueAtTime(0.001,start+dur);
+  o.connect(g); g.connect(ac.destination);
+  o.start(start); o.stop(start+dur+0.02);
+}
+function beep(freq,dur,type='square',vol=0.15,slide=0){
+  scheduleTone(freq,dur,type,vol,slide,0);
+}
+function noise(dur=0.08,vol=0.04,cutoff=1800){
+  if(muted) return;
+  const ac=ensureAudio(); if(!ac) return;
+  const frames=Math.max(1,Math.floor(ac.sampleRate*dur));
+  const buffer=ac.createBuffer(1,frames,ac.sampleRate);
+  const data=buffer.getChannelData(0);
+  for(let i=0;i<frames;i++) data[i]=(Math.random()*2-1)*(1-i/frames);
+  const src=ac.createBufferSource(), filter=ac.createBiquadFilter(), gain=ac.createGain();
+  src.buffer=buffer; filter.type='bandpass'; filter.frequency.value=cutoff; filter.Q.value=0.8;
+  gain.gain.setValueAtTime(vol,ac.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+dur);
+  src.connect(filter); filter.connect(gain); gain.connect(ac.destination); src.start();
+}
+function bgmTick(){
+  if(muted) return;
+  const note=BGM_MELODY[bgmStep%BGM_MELODY.length];
+  if(note) scheduleTone(note,0.18,'square',0.018,0,0.01);
+  if(bgmStep%2===0){
+    const bass=BGM_BASS[Math.floor(bgmStep/2)%BGM_BASS.length];
+    scheduleTone(bass,0.34,'triangle',0.026,0,0.01);
+  }
+  if(bgmStep%4===0) scheduleTone(92,0.13,'sine',0.035,-42,0.01);
+  bgmStep++;
+}
+function startBgm(){
+  if(muted || bgmTimer) return;
+  if(!ensureAudio()) return;
+  bgmTick();
+  bgmTimer=setInterval(bgmTick,230);
+}
+function stopBgm(){
+  if(bgmTimer){ clearInterval(bgmTimer); bgmTimer=null; }
+}
+function setMuted(next){
+  muted=!!next;
+  localStorage.setItem('jataPowerRushMuted',muted?'1':'0');
+  if(muted) stopBgm(); else startBgm();
+  window.dispatchEvent(new CustomEvent('power-rush-audio-change',{detail:{enabled:!muted}}));
+}
+window.togglePowerRushAudio=()=>setMuted(!muted);
+window.powerRushAudioEnabled=()=>!muted;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden) stopBgm();
+  else if(!muted && state!==S.TITLE) startBgm();
+});
 const SFX = {
-  eat(){ beep(300,0.12,'square',0.12,300); setTimeout(()=>beep(600,0.1,'square',0.1,200),60); },
-  grow(){ beep(500,0.15,'triangle',0.15,400); },
+  choice(){ beep(520,0.08,'triangle',0.08,120); },
+  start(){ [293.66,392,523.25].forEach((f,i)=>scheduleTone(f,0.16,'square',0.08,0,i*0.08)); },
+  eat(){ noise(0.07,0.045,2100); beep(300,0.12,'square',0.11,300); setTimeout(()=>beep(600,0.1,'square',0.09,200),60); },
+  grow(){ beep(500,0.15,'triangle',0.13,400); },
   chest(){ beep(700,0.1,'sine',0.15); setTimeout(()=>beep(900,0.1,'sine',0.15),80); setTimeout(()=>beep(1200,0.15,'sine',0.15),160); },
-  lose(){ beep(200,0.3,'sawtooth',0.15,-120); },
-  boss(){ beep(150,0.25,'sawtooth',0.18,-50); },
+  lose(){ noise(0.18,0.055,430); beep(200,0.3,'sawtooth',0.14,-120); },
+  boss(){ noise(0.1,0.05,900); beep(150,0.25,'sawtooth',0.16,-50); },
   clear(){ [523,659,784,1046].forEach((f,i)=>setTimeout(()=>beep(f,0.18,'triangle',0.15),i*110)); },
   tapNG(){ beep(160,0.12,'square',0.12,-60); },
 };
@@ -260,7 +327,7 @@ function onTap(e){
     if(heroHit){
       selectedHero = heroHit.key;
       localStorage.setItem('jataPowerRushHero', selectedHero);
-      beep(520,0.08,'triangle',0.1,120);
+      SFX.choice();
       return;
     }
     startGame(); return;
@@ -278,9 +345,6 @@ function onTap(e){
   }
   if(state === S.GAMEOVER){ genLevel(level); state=S.PLAY; return; }
   if(state !== S.PLAY) return;
-
-  // ミュートボタン
-  if(p.x > W-56 && p.y < 56){ muted=!muted; return; }
 
   // 敵タップ判定
   let hit=null;
@@ -319,7 +383,8 @@ function startGame(){
   endlessMode = level > FINAL_STAGE;
   genLevel(level);
   state = params.get('ending') === '1' ? S.ENDING : S.PLAY;
-  beep(440,0.1,'triangle',0.15,200);
+  startBgm();
+  SFX.start();
 }
 
 // ---------- パーティクル・演出 ----------
@@ -446,7 +511,7 @@ function roundRect(x,y,w,h,r){
 }
 function numBadge(x,y,txt,col='#fff',stroke='#c92a2a',size=26){
   cx.save();
-  cx.font = '900 '+size+'px "Arial Black",Arial,sans-serif';
+  cx.font = '900 '+size+'px '+FONT_JP;
   cx.textAlign='center'; cx.textBaseline='middle';
   cx.lineWidth = size*0.28; cx.strokeStyle=stroke; cx.lineJoin='round';
   cx.strokeText(txt,x,y);
@@ -532,7 +597,7 @@ function drawHeroChoice(item){
   }
   cx.globalAlpha=1;
   cx.textAlign='center'; cx.textBaseline='middle';
-  cx.font='900 '+(H<650?14:16)+'px Arial';
+  cx.font='900 '+(H<650?14:16)+'px '+FONT_JP;
   cx.lineWidth=5; cx.strokeStyle='#0b1d33'; cx.lineJoin='round';
   cx.strokeText(item.label,item.x,item.y+24);
   cx.fillStyle=selected?'#ffd75e':'#e8eef5';
@@ -587,7 +652,7 @@ function drawEnemy(en){
     cx.globalAlpha = alpha;
     numBadge(0,0, isMul?('×'+en.val):('+'+en.val), '#fff', col1, 24);
     if(H>=650){
-      cx.font='bold 12px Arial'; cx.fillStyle='rgba(255,255,255,0.85)';
+      cx.font='700 12px '+FONT_JP; cx.fillStyle='rgba(255,255,255,0.85)';
       cx.textAlign='center'; cx.fillText('どっちか一つ', 0, -gh/2-10);
     }
     cx.restore();
@@ -609,7 +674,7 @@ function drawEnemy(en){
       cx.imageSmoothingEnabled=false;
       cx.drawImage(bossArt, -spriteW/2, -spriteH*0.66, spriteW, spriteH);
       numBadge(0,-spriteH*0.48, en.val, '#fff','#53231d',H<650?26:32);
-      numBadge(0,-spriteH*0.70,'BOSS','#ffd75e','#53231d',H<650?15:17);
+      numBadge(0,-spriteH*0.70,'師範','#ffd75e','#53231d',H<650?15:17);
     } else if(midBoss && imageReady(midBossArtForLevel(level))){
       const compact = H < 650 ? 0.82 : 1;
       const maxH = 82*compact, maxW = 100*compact;
@@ -681,36 +746,30 @@ function drawBG(){
 
 // ---------- UI ----------
 function drawHUD(){
-  // レベル表示
   cx.save();
   cx.fillStyle='rgba(11,29,51,0.75)';
   roundRect(12,12,176,44,12); cx.fill();
-  cx.fillStyle='#ffd75e'; cx.font='900 20px Arial'; cx.textAlign='left'; cx.textBaseline='middle';
-  cx.fillText('STAGE '+level, 26, 34);
-  cx.font='700 11px Arial'; cx.fillStyle='#f1ead8';
-  cx.fillText(level >= 6 ? 'CASTLE' : 'DOJO', 128, 35);
-  // ミュート
-  cx.fillStyle='rgba(11,29,51,0.75)';
-  roundRect(W-56,12,44,44,12); cx.fill();
-  cx.fillStyle='#e8eef5'; cx.font='20px Arial'; cx.textAlign='center';
-  cx.fillText(muted?'🔇':'🔊', W-34, 35);
+  cx.fillStyle='#ffd75e'; cx.font='900 20px '+FONT_JP; cx.textAlign='left'; cx.textBaseline='middle';
+  cx.fillText('修行 '+level, 26, 34);
+  cx.font='700 11px '+FONT_JP; cx.fillStyle='#f1ead8';
+  cx.fillText(level >= 6 ? '城内' : '道場', 132, 35);
   cx.restore();
 }
 
 function drawOverlay(title, sub, btn, col){
   cx.fillStyle='rgba(11,29,51,0.72)'; cx.fillRect(0,0,W,H);
   cx.textAlign='center';
-  cx.font='900 '+Math.min(44,W*0.105)+'px "Arial Black",Arial';
+  cx.font='900 '+Math.min(44,W*0.105)+'px '+FONT_JP;
   cx.lineWidth=10; cx.strokeStyle='#0b1d33'; cx.lineJoin='round';
   cx.strokeText(title, W/2, H*0.4);
   cx.fillStyle=col; cx.fillText(title, W/2, H*0.4);
-  cx.font='bold 20px Arial'; cx.fillStyle='#e8eef5';
+  cx.font='700 20px '+FONT_JP; cx.fillStyle='#e8eef5';
   const subScale = Math.min(1, (W-32) / Math.max(1,cx.measureText(sub).width));
-  cx.font='bold '+Math.max(13,20*subScale)+'px Arial';
+  cx.font='700 '+Math.max(13,20*subScale)+'px '+FONT_JP;
   cx.fillText(sub, W/2, H*0.4+50);
   const bw=230,bh=62;
   cx.fillStyle=col; roundRect(W/2-bw/2, H*0.56, bw, bh, 16); cx.fill();
-  cx.fillStyle='#0b1d33'; cx.font='900 24px Arial';
+  cx.fillStyle='#0b1d33'; cx.font='900 24px '+FONT_JP;
   cx.fillText(btn, W/2, H*0.56+bh/2+2);
 }
 
@@ -725,22 +784,25 @@ function draw(){
     cx.textAlign='center';
     const compactTitle = H < 650;
     const bY = Math.sin(time*2)*6;
-    cx.font='900 '+Math.min(46,W*0.11)+'px "Arial Black",Arial';
+    cx.font='900 '+Math.min(46,W*0.11)+'px '+FONT_JP;
     cx.lineWidth=12; cx.strokeStyle='#0b1d33'; cx.lineJoin='round';
     cx.strokeText('POWER RUSH', W/2, H*0.3+bY);
     const tg = cx.createLinearGradient(0,H*0.3-40,0,H*0.3+10);
     tg.addColorStop(0,'#ffe98a'); tg.addColorStop(1,'#ff9d3d');
     cx.fillStyle=tg; cx.fillText('POWER RUSH', W/2, H*0.3+bY);
-    cx.font='900 20px Arial'; cx.fillStyle='#f0d28b';
-    cx.fillText('猫侍たちの城攻め', W/2, H*0.3+bY-58);
-    cx.font='bold '+Math.min(17,W*0.041)+'px Arial'; cx.fillStyle='#e8eef5';
-    cx.fillText('自分より小さい数字の敵をタップして吸収！', W/2, H*0.44);
-    cx.fillText('デカくなってBOSSを倒せ', W/2, H*0.44+28);
+    cx.font='900 20px '+FONT_JP; cx.fillStyle='#f0d28b';
+    cx.fillText('猫侍たちの修行道場', W/2, H*0.3+bY-58);
+    cx.font='700 '+Math.min(17,W*0.041)+'px '+FONT_JP; cx.fillStyle='#e8eef5';
+    cx.fillText('自分より小さい数字を選んで力を吸収！', W/2, H*0.44);
+    cx.fillText('師範より強くなって修行を突破', W/2, H*0.44+28);
     titleHeroLayout().forEach(drawHeroChoice);
     const blink = (Math.sin(time*4)+1)/2;
-    cx.globalAlpha = 0.4+blink*0.6;
-    cx.font='900 22px Arial'; cx.fillStyle='#ffd75e';
-    cx.fillText('TAP TO START', W/2, H*(compactTitle?0.91:0.90));
+    const startY=H*(compactTitle?0.91:0.90), startW=Math.min(226,W-60), startH=52;
+    cx.globalAlpha = 0.82+blink*0.18;
+    cx.fillStyle='#a9362a'; roundRect(W/2-startW/2,startY-startH/2,startW,startH,8); cx.fill();
+    cx.strokeStyle='#ffd75e'; cx.lineWidth=3; roundRect(W/2-startW/2,startY-startH/2,startW,startH,8); cx.stroke();
+    cx.font='900 22px '+FONT_JP; cx.fillStyle='#fff4cf';
+    cx.textBaseline='middle'; cx.fillText('修行開始！', W/2, startY);
     cx.globalAlpha=1;
   } else {
     // 敵（y順ソートで奥→手前）
@@ -765,9 +827,9 @@ function draw(){
     cx.globalAlpha=1;
     drawHUD();
 
-    if(state===S.CLEAR) drawOverlay('STAGE CLEAR!', 'パワー '+player.power+' でクリア！', 'NEXT STAGE ▶', '#7dff8a');
-    if(state===S.ENDING) drawOverlay('天下統一！', 'STAGE 30 制覇！', 'ENDLESS MODE ▶', '#ffd75e');
-    if(state===S.GAMEOVER) drawOverlay('やられた…', (gameOverMsg||'相手のほうがデカかった！')+' STAGE '+level, 'RETRY ↻', '#ff7a4d');
+    if(state===S.CLEAR) drawOverlay('一本！', 'パワー '+player.power+' で修行達成！', '次の修行 ▶', '#7dff8a');
+    if(state===S.ENDING) drawOverlay('奥義皆伝！', '三十の修行を達成！', '終わりなき修行 ▶', '#ffd75e');
+    if(state===S.GAMEOVER) drawOverlay('参った…', (gameOverMsg||'相手のほうが強かった！')+' 修行 '+level, '再挑戦 ↻', '#ff7a4d');
   }
 
   if(flashA>0){ cx.globalAlpha=flashA; cx.fillStyle=flashCol; cx.fillRect(0,0,W,H); cx.globalAlpha=1; }
@@ -788,5 +850,15 @@ function loop(now){
 }
 requestAnimationFrame(loop);
 </script>
+<script>
+window.JATA_ARCADE_MENU={
+  title:'JATA POWER RUSH',
+  shareText:'猫侍たちの数字修行「JATA POWER RUSH」に挑戦！',
+  audioEvent:'power-rush-audio-change',
+  toggleAudio:'togglePowerRushAudio',
+  audioState:'powerRushAudioEnabled'
+};
+</script>
+<script src="assets/arcade-game-menu.js"></script>
 </body>
 </html>
