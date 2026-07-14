@@ -6,7 +6,7 @@
 <title>猫試し | JATA POWER RUSH</title>
 <meta name="description" content="小さい数字を選んで力を高める、猫侍たちの数字修行ゲーム。">
 <meta property="og:title" content="猫試し | JATA POWER RUSH">
-<meta property="og:description" content="黒猫侍と茶トラ侍で挑む、30面＋エンドレスの数字修行。">
+<meta property="og:description" content="黒猫侍と茶トラ侍で挑む、全30面の数字修行。ノーミス達成で特典映像が開放。">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://jata-power-rush.vercel.app/">
 <meta property="og:image" content="https://jata-power-rush.vercel.app/assets/og-neko-dameshi.png">
@@ -20,10 +20,46 @@
   html,body { width:100%; height:100%; overflow:hidden; background:#080706; touch-action:none;
     font-family:'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',system-ui,sans-serif; }
   #game { display:block; width:100vw; height:100vh; }
+  [hidden] { display:none !important; }
+  .ending-experience { position:fixed; inset:0; z-index:40; display:none; background:#050505; touch-action:manipulation; }
+  .ending-experience.is-visible { display:block; }
+  .ending-screen { position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:#050505; }
+  .ending-screen.is-active { display:flex; }
+  .ending-card-screen { padding:max(10px,env(safe-area-inset-top)) 10px max(74px,calc(env(safe-area-inset-bottom) + 64px)); }
+  .ending-art { display:block; width:100%; height:100%; object-fit:contain; }
+  .ending-actions { position:absolute; z-index:2; left:10px; right:10px; bottom:max(10px,env(safe-area-inset-bottom)); display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
+  .ending-button { min-width:156px; height:52px; padding:0 18px; border:3px solid #ffd75e; border-radius:8px; background:#a9362a; color:#fff4cf; box-shadow:0 4px 0 #43140f; font:900 18px/1 'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif; cursor:pointer; }
+  .ending-button:active { transform:translateY(3px); box-shadow:0 1px 0 #43140f; }
+  .ending-button.secondary { border-color:#d8c79b; background:#152c43; box-shadow:0 4px 0 #07111b; }
+  .no-miss-mark { position:absolute; z-index:2; bottom:max(78px,calc(env(safe-area-inset-bottom) + 68px)); left:50%; transform:translateX(-50%); padding:7px 13px; border:2px solid #ffd75e; border-radius:6px; background:rgba(11,29,51,0.9); color:#ffd75e; font:900 14px/1 'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif; white-space:nowrap; }
+  .bonus-movie-screen { padding:0; }
+  #bonusMovie { display:block; width:100%; height:100%; object-fit:contain; background:#000; }
+  .movie-close { position:absolute; z-index:3; top:max(10px,env(safe-area-inset-top)); left:max(10px,env(safe-area-inset-left)); width:44px; height:44px; border:2px solid rgba(255,255,255,0.8); border-radius:50%; background:rgba(0,0,0,0.7); color:#fff; font:700 28px/38px system-ui,sans-serif; cursor:pointer; }
+  @media (max-width:480px) {
+    .ending-card-screen { padding-left:0; padding-right:0; }
+    .ending-actions { gap:8px; }
+    .ending-button { min-width:140px; height:48px; padding:0 13px; font-size:16px; }
+  }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
+<div id="endingExperience" class="ending-experience" aria-hidden="true">
+  <section id="endingCardScreen" class="ending-screen ending-card-screen" aria-label="30面クリア">
+    <img class="ending-art" src="assets/ending/end-card.jpg" alt="THE END 修行の旅を終えた二匹は新たな道へと歩み出した">
+    <div id="noMissMark" class="no-miss-mark" hidden>ノーミス達成</div>
+    <div class="ending-actions">
+      <button id="bonusMovieButton" class="ending-button" type="button" hidden>特典映像 ▶</button>
+      <button id="endingTitleButton" class="ending-button secondary" type="button">タイトルへ</button>
+    </div>
+  </section>
+  <section id="bonusMovieScreen" class="ending-screen bonus-movie-screen" aria-label="ノーミス特典映像">
+    <video id="bonusMovie" controls playsinline preload="metadata" poster="assets/ending/end-card.jpg">
+      <source src="assets/ending/nomiss-ending.m4v" type="video/mp4">
+    </video>
+    <button id="movieCloseButton" class="movie-close" type="button" aria-label="特典映像を閉じる" title="特典映像を閉じる">×</button>
+  </section>
+</div>
 <script>
 'use strict';
 const FONT_JP = '"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif';
@@ -32,6 +68,14 @@ const FONT_JP = '"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Yu Gothic",s
 // ============================================================
 const cv = document.getElementById('game');
 const cx = cv.getContext('2d');
+const endingExperience = document.getElementById('endingExperience');
+const endingCardScreen = document.getElementById('endingCardScreen');
+const bonusMovieScreen = document.getElementById('bonusMovieScreen');
+const bonusMovieButton = document.getElementById('bonusMovieButton');
+const endingTitleButton = document.getElementById('endingTitleButton');
+const movieCloseButton = document.getElementById('movieCloseButton');
+const noMissMark = document.getElementById('noMissMark');
+const bonusMovie = document.getElementById('bonusMovie');
 const ART = {
   dojo: loadImage('assets/backgrounds/dojo-tatami.jpg'),
   castle: loadImage('assets/backgrounds/castle-moon.jpg'),
@@ -142,14 +186,16 @@ function stopBgm(){
 function setMuted(next){
   muted=!!next;
   localStorage.setItem('jataPowerRushMuted',muted?'1':'0');
-  if(muted) stopBgm(); else startBgm();
+  bonusMovie.muted=muted;
+  if(muted) stopBgm();
+  else if(!endingExperience.classList.contains('is-visible')) startBgm();
   window.dispatchEvent(new CustomEvent('power-rush-audio-change',{detail:{enabled:!muted}}));
 }
 window.togglePowerRushAudio=()=>setMuted(!muted);
 window.powerRushAudioEnabled=()=>!muted;
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden) stopBgm();
-  else if(!muted && state!==S.TITLE) startBgm();
+  else if(!muted && state!==S.TITLE && state!==S.ENDING) startBgm();
 });
 const SFX = {
   choice(){ beep(520,0.08,'triangle',0.08,120); },
@@ -171,6 +217,8 @@ let level = 1;
 let bestLevel = Number(localStorage.getItem('jataPowerRushBest') || 1);
 let selectedHero = localStorage.getItem('jataPowerRushHero') === 'tabby' ? 'tabby' : 'black';
 let endlessMode = false;
+let noMissRun = true;
+let endingBonusUnlocked = false;
 let player = { power:5, x:0, y:0, tx:0, ty:0, scale:1, face:1, walk:0 };
 let enemies = [];   // {x,y,val,r,type,dead,popT,shake,hue,bob}
 let particles = []; // {x,y,vx,vy,life,col,size,txt}
@@ -344,10 +392,7 @@ function onTap(e){
     genLevel(level); state=S.PLAY; return;
   }
   if(state === S.ENDING){
-    endlessMode = true;
-    level = FINAL_STAGE + 1;
-    rememberBest(level);
-    genLevel(level); state=S.PLAY; return;
+    returnToTitle(); return;
   }
   if(state === S.GAMEOVER){ genLevel(level); state=S.PLAY; return; }
   if(state !== S.PLAY) return;
@@ -378,6 +423,7 @@ cv.addEventListener('mousedown', onTap);
 
 function startGame(){
   const params = new URLSearchParams(window.location.search);
+  hideEndingExperience();
   const heroParam = params.get('hero');
   if(heroParam === 'black' || heroParam === 'tabby'){
     selectedHero = heroParam;
@@ -387,11 +433,69 @@ function startGame(){
   level = Number.isInteger(requestedStage) && requestedStage > 0 ? Math.min(requestedStage,99) : 1;
   if(params.get('ending') === '1') level = FINAL_STAGE;
   endlessMode = level > FINAL_STAGE;
+  noMissRun = level===1 || params.get('perfect')==='1';
+  endingBonusUnlocked = false;
   genLevel(level);
-  state = params.get('ending') === '1' ? S.ENDING : S.PLAY;
-  startBgm();
+  if(params.get('ending') === '1'){
+    state = S.ENDING;
+    endingBonusUnlocked = noMissRun;
+    showEndingCard();
+  } else {
+    state = S.PLAY;
+    startBgm();
+  }
   SFX.start();
 }
+
+function showEndingCard(){
+  stopBgm();
+  bonusMovie.pause();
+  endingExperience.classList.add('is-visible');
+  endingExperience.setAttribute('aria-hidden','false');
+  endingCardScreen.classList.add('is-active');
+  bonusMovieScreen.classList.remove('is-active');
+  bonusMovieButton.hidden=!endingBonusUnlocked;
+  noMissMark.hidden=!endingBonusUnlocked;
+}
+function hideEndingExperience(){
+  bonusMovie.pause();
+  endingExperience.classList.remove('is-visible');
+  endingExperience.setAttribute('aria-hidden','true');
+  endingCardScreen.classList.remove('is-active');
+  bonusMovieScreen.classList.remove('is-active');
+}
+function playBonusMovie(){
+  if(!endingBonusUnlocked) return;
+  stopBgm();
+  endingCardScreen.classList.remove('is-active');
+  bonusMovieScreen.classList.add('is-active');
+  bonusMovie.currentTime=0;
+  bonusMovie.muted=muted;
+  bonusMovie.play().catch(()=>{});
+}
+function closeBonusMovie(){
+  bonusMovie.pause();
+  bonusMovie.currentTime=0;
+  bonusMovieScreen.classList.remove('is-active');
+  endingCardScreen.classList.add('is-active');
+}
+function returnToTitle(){
+  hideEndingExperience();
+  stopBgm();
+  level=1;
+  endlessMode=false;
+  noMissRun=true;
+  endingBonusUnlocked=false;
+  gameOverMsg='';
+  particles=[];
+  floatTexts=[];
+  attackTarget=null;
+  state=S.TITLE;
+}
+bonusMovieButton.addEventListener('click',playBonusMovie);
+endingTitleButton.addEventListener('click',returnToTitle);
+movieCloseButton.addEventListener('click',closeBonusMovie);
+bonusMovie.addEventListener('ended',closeBonusMovie);
 
 // ---------- パーティクル・演出 ----------
 function burst(x,y,col,n=14){
@@ -434,6 +538,7 @@ function update(dt){
         attackPhase=1; attackT=0;
         if(tg.lose){
           // 敗北
+          noMissRun=false;
           shakeScreen=8; flashCol='#e33'; flashA=0.6;
           SFX.lose(); burst(player.x,player.y,'#ff5555',20);
           gameOverMsg='';
@@ -477,10 +582,17 @@ function update(dt){
         const bossAlive = enemies.some(e=>!e.dead && e.type==='boss');
         if(!bossAlive){
           rememberBest(level);
-          state = level===FINAL_STAGE && !endlessMode ? S.ENDING : S.CLEAR;
+          if(level===FINAL_STAGE && !endlessMode){
+            state=S.ENDING;
+            endingBonusUnlocked=noMissRun;
+            showEndingCard();
+          } else {
+            state=S.CLEAR;
+          }
           SFX.clear(); flashCol='#7dff8a'; flashA=0.4;
         }
         else if(isStuck()){ // 保険：倒せる敵ゼロ＝詰み → 自動リトライ画面
+          noMissRun=false;
           gameOverMsg='倒せる敵がいない…詰み！';
           shakeScreen=6; flashCol='#e33'; flashA=0.5; SFX.lose();
           state = S.GAMEOVER;
@@ -838,7 +950,6 @@ function draw(){
     drawHUD();
 
     if(state===S.CLEAR) drawOverlay('一本！', 'パワー '+player.power+' で修行達成！', '次の修行 ▶', '#7dff8a');
-    if(state===S.ENDING) drawOverlay('奥義皆伝！', '三十の修行を達成！', '終わりなき修行 ▶', '#ffd75e');
     if(state===S.GAMEOVER) drawOverlay('参った…', (gameOverMsg||'相手のほうが強かった！')+' 修行 '+level, '再挑戦 ↻', '#ff7a4d');
   }
 
