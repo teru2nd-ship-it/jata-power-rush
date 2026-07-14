@@ -38,6 +38,12 @@
 - TailscaleテストURL: http://100.96.72.80:8787/
 - 本番URL: https://jata-power-rush.vercel.app/
 - GitHub: https://github.com/teru2nd-ship-it/jata-power-rush
+- ゲームcommit: `75df314`（`Add 猫試し title and arcade artwork`）
+- ゲームproduction: `dpl_GhmiGbcPaarLDg1enLAZ9yVZpwDe`
+- JATA ARCADE PR: https://github.com/teru2nd-ship-it/jata-arcade-control-tower/pull/4
+- JATA ARCADE追加commit: `a26c488` / merge commit: `991f088` / 安全設定追補: `384e119`
+- JATA ARCADE production: `dpl_4SueXfP76WFXmAqQ25YiAgkS4Vas`
+- JATA ARCADE本番: https://jata-arcade-control-tower.vercel.app/
 
 ボス表示の確認用URL:
 
