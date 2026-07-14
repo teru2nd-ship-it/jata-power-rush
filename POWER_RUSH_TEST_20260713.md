@@ -55,6 +55,9 @@
 - 共通メニューとエンディング操作が重ならないよう、390×844と1440×900で配置を調整。
 - 通常クリア時に特典ボタンが非表示、ノーミス時に表示、動画再生・終了復帰・タイトル復帰を確認。
 - ブラウザーエラー0件。
+- ゲームcommit: `0d84cc2`（`Add 30-stage ending and no-miss movie`）
+- production: `dpl_5rGLGSrgyK2zdnECtUvu1WvFmEX9`
+- 本番URL: https://jata-power-rush.vercel.app/
 
 ボス表示の確認用URL:
 
