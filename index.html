@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>JATA POWER RUSH</title>
+<title>猫試し | JATA POWER RUSH</title>
+<meta name="description" content="小さい数字を選んで力を高める、猫侍たちの数字修行ゲーム。">
+<meta property="og:title" content="猫試し | JATA POWER RUSH">
+<meta property="og:description" content="黒猫侍と茶トラ侍で挑む、30面＋エンドレスの数字修行。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://jata-power-rush.vercel.app/">
+<meta property="og:image" content="https://jata-power-rush.vercel.app/assets/og-neko-dameshi.png">
 <link rel="icon" href="data:,">
 <link rel="canonical" href="https://jata-power-rush.vercel.app/">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -783,18 +789,22 @@ function draw(){
     // タイトル
     cx.textAlign='center';
     const compactTitle = H < 650;
-    const bY = Math.sin(time*2)*6;
-    cx.font='900 '+Math.min(46,W*0.11)+'px '+FONT_JP;
+    const bY = Math.sin(time*2)*5;
+    const titleY = H*0.3+bY;
+    cx.font='900 '+Math.min(48,W*0.13)+'px '+FONT_JP;
     cx.lineWidth=12; cx.strokeStyle='#0b1d33'; cx.lineJoin='round';
-    cx.strokeText('POWER RUSH', W/2, H*0.3+bY);
-    const tg = cx.createLinearGradient(0,H*0.3-40,0,H*0.3+10);
+    cx.strokeText('猫試し', W/2, titleY-16);
+    const tg = cx.createLinearGradient(0,titleY-58,0,titleY);
     tg.addColorStop(0,'#ffe98a'); tg.addColorStop(1,'#ff9d3d');
-    cx.fillStyle=tg; cx.fillText('POWER RUSH', W/2, H*0.3+bY);
-    cx.font='900 20px '+FONT_JP; cx.fillStyle='#f0d28b';
-    cx.fillText('猫侍たちの修行道場', W/2, H*0.3+bY-58);
+    cx.fillStyle=tg; cx.fillText('猫試し', W/2, titleY-16);
+    cx.font='900 '+Math.min(28,W*0.07)+'px '+FONT_JP;
+    cx.lineWidth=8; cx.strokeText('JATA POWER RUSH', W/2, titleY+27);
+    cx.fillStyle='#fff4cf'; cx.fillText('JATA POWER RUSH', W/2, titleY+27);
+    cx.font='700 '+Math.min(18,W*0.045)+'px '+FONT_JP; cx.fillStyle='#f0d28b';
+    cx.fillText('猫侍たちの修行道場', W/2, titleY-68);
     cx.font='700 '+Math.min(17,W*0.041)+'px '+FONT_JP; cx.fillStyle='#e8eef5';
-    cx.fillText('自分より小さい数字を選んで力を吸収！', W/2, H*0.44);
-    cx.fillText('師範より強くなって修行を突破', W/2, H*0.44+28);
+    cx.fillText('自分より小さい数字を選んで力を吸収！', W/2, H*0.45);
+    cx.fillText('師範より強くなって修行を突破', W/2, H*0.45+27);
     titleHeroLayout().forEach(drawHeroChoice);
     const blink = (Math.sin(time*4)+1)/2;
     const startY=H*(compactTitle?0.91:0.90), startW=Math.min(226,W-60), startH=52;
@@ -852,8 +862,8 @@ requestAnimationFrame(loop);
 </script>
 <script>
 window.JATA_ARCADE_MENU={
-  title:'JATA POWER RUSH',
-  shareText:'猫侍たちの数字修行「JATA POWER RUSH」に挑戦！',
+  title:'猫試し | JATA POWER RUSH',
+  shareText:'猫侍たちの数字修行「猫試し / JATA POWER RUSH」に挑戦！',
   audioEvent:'power-rush-audio-change',
   toggleAudio:'togglePowerRushAudio',
   audioState:'powerRushAudioEnabled'

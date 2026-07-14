@@ -1,6 +1,6 @@
-# JATA POWER RUSH
+# 猫試し / JATA POWER RUSH
 
-数字を吸収して成長し、猫侍が師範へ挑むスマートフォン向けHTML Canvasゲームです。
+`猫騙し`の語感をもじった日本語タイトル「猫試し」。数字を吸収して成長し、猫侍が師範へ挑むスマートフォン向けHTML Canvasゲームです。英語タイトルと公開URLは従来どおりです。
 
 ## 公開先
 
@@ -29,6 +29,7 @@ python3 -m http.server 8787 --bind 0.0.0.0
 
 - `index.html`: ゲーム本体
 - `assets/arcade-game-menu.js`: JATA ARCADE共通メニュー・音声・共有ボタン
+- `assets/og-neko-dameshi.png`: 公開共有・JATA ARCADEカード用1200×630画像
 - `assets/backgrounds/`: 道場・日本城背景
 - `assets/enemies/`: 竹、忍者、中ボス、ボス
 - `assets/heroes/`: 黒猫侍・茶トラ侍
