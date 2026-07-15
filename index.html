@@ -33,7 +33,7 @@
   .ending-button.secondary { border-color:#d8c79b; background:#152c43; box-shadow:0 4px 0 #07111b; }
   .no-miss-mark { position:absolute; z-index:2; bottom:max(78px,calc(env(safe-area-inset-bottom) + 68px)); left:50%; transform:translateX(-50%); padding:7px 13px; border:2px solid #ffd75e; border-radius:6px; background:rgba(11,29,51,0.9); color:#ffd75e; font:900 14px/1 'Zen Kaku Gothic New','Hiragino Kaku Gothic ProN','Yu Gothic',sans-serif; white-space:nowrap; }
   .bonus-movie-screen { padding:0; }
-  #bonusMovie { display:block; width:100%; height:100%; object-fit:contain; background:#000; }
+  #bonusMovie, #fishingEndingMovie { display:block; width:100%; height:100%; object-fit:contain; background:#000; }
   .movie-close { position:absolute; z-index:3; top:max(10px,env(safe-area-inset-top)); left:max(10px,env(safe-area-inset-left)); width:44px; height:44px; border:2px solid rgba(255,255,255,0.8); border-radius:50%; background:rgba(0,0,0,0.7); color:#fff; font:700 28px/38px system-ui,sans-serif; cursor:pointer; }
   @media (max-width:480px) {
     .ending-card-screen { padding-left:0; padding-right:0; }
@@ -59,6 +59,12 @@
     </video>
     <button id="movieCloseButton" class="movie-close" type="button" aria-label="特典映像を閉じる" title="特典映像を閉じる">×</button>
   </section>
+  <section id="fishingMovieScreen" class="ending-screen bonus-movie-screen" aria-label="魚釣り編エンディング">
+    <video id="fishingEndingMovie" controls playsinline preload="metadata" poster="assets/backgrounds/fishing-ocean-pier.jpg">
+      <source src="assets/ending/fishing-ending.m4v" type="video/mp4">
+    </video>
+    <button id="fishingMovieCloseButton" class="movie-close" type="button" aria-label="魚釣り編エンディングを閉じる" title="魚釣り編エンディングを閉じる">×</button>
+  </section>
 </div>
 <script>
 'use strict';
@@ -71,11 +77,14 @@ const cx = cv.getContext('2d');
 const endingExperience = document.getElementById('endingExperience');
 const endingCardScreen = document.getElementById('endingCardScreen');
 const bonusMovieScreen = document.getElementById('bonusMovieScreen');
+const fishingMovieScreen = document.getElementById('fishingMovieScreen');
 const bonusMovieButton = document.getElementById('bonusMovieButton');
 const endingTitleButton = document.getElementById('endingTitleButton');
 const movieCloseButton = document.getElementById('movieCloseButton');
+const fishingMovieCloseButton = document.getElementById('fishingMovieCloseButton');
 const noMissMark = document.getElementById('noMissMark');
 const bonusMovie = document.getElementById('bonusMovie');
+const fishingEndingMovie = document.getElementById('fishingEndingMovie');
 const ART = {
   dojo: loadImage('assets/backgrounds/dojo-tatami.jpg'),
   castle: loadImage('assets/backgrounds/castle-moon.jpg'),
@@ -546,7 +555,7 @@ function onTap(e){
   if(state === S.ENDING){
     returnToTitle(); return;
   }
-  if(state === S.WAR_END){ returnToTitle(); return; }
+  if(state === S.WAR_END){ showFishingEnding(); return; }
   if(state === S.GAMEOVER){
     if(gameMode==='war') genWarMap();
     else genLevel(level);
@@ -626,8 +635,13 @@ function startFishingGame(){
   floatTexts=[];
   attackTarget=null;
   genWarMap();
-  state=S.PLAY;
-  startBgm();
+  if(params.get('ending')==='1'){
+    state=S.WAR_END;
+    stopBgm();
+  } else {
+    state=S.PLAY;
+    startBgm();
+  }
   SFX.start();
 }
 
@@ -637,19 +651,23 @@ function startWarGame(){ startFishingGame(); }
 function showEndingCard(){
   stopBgm();
   bonusMovie.pause();
+  fishingEndingMovie.pause();
   endingExperience.classList.add('is-visible');
   endingExperience.setAttribute('aria-hidden','false');
   endingCardScreen.classList.add('is-active');
   bonusMovieScreen.classList.remove('is-active');
+  fishingMovieScreen.classList.remove('is-active');
   bonusMovieButton.hidden=!endingBonusUnlocked;
   noMissMark.hidden=!endingBonusUnlocked;
 }
 function hideEndingExperience(){
   bonusMovie.pause();
+  fishingEndingMovie.pause();
   endingExperience.classList.remove('is-visible');
   endingExperience.setAttribute('aria-hidden','true');
   endingCardScreen.classList.remove('is-active');
   bonusMovieScreen.classList.remove('is-active');
+  fishingMovieScreen.classList.remove('is-active');
 }
 function playBonusMovie(){
   if(!endingBonusUnlocked) return;
@@ -665,6 +683,18 @@ function closeBonusMovie(){
   bonusMovie.currentTime=0;
   bonusMovieScreen.classList.remove('is-active');
   endingCardScreen.classList.add('is-active');
+}
+function showFishingEnding(){
+  stopBgm();
+  bonusMovie.pause();
+  endingExperience.classList.add('is-visible');
+  endingExperience.setAttribute('aria-hidden','false');
+  endingCardScreen.classList.remove('is-active');
+  bonusMovieScreen.classList.remove('is-active');
+  fishingMovieScreen.classList.add('is-active');
+  fishingEndingMovie.currentTime=0;
+  fishingEndingMovie.muted=muted;
+  fishingEndingMovie.play().catch(()=>{});
 }
 function returnToTitle(){
   hideEndingExperience();
@@ -690,6 +720,8 @@ bonusMovieButton.addEventListener('click',playBonusMovie);
 endingTitleButton.addEventListener('click',returnToTitle);
 movieCloseButton.addEventListener('click',closeBonusMovie);
 bonusMovie.addEventListener('ended',closeBonusMovie);
+fishingMovieCloseButton.addEventListener('click',returnToTitle);
+fishingEndingMovie.addEventListener('ended',returnToTitle);
 
 // ---------- パーティクル・演出 ----------
 function burst(x,y,col,n=14){
@@ -1417,7 +1449,7 @@ function draw(){
     if(state===S.CLEAR){
       drawOverlay('一本！','パワー '+formatPower(player.power)+' で修行達成！','次の修行 ▶','#7dff8a');
     }
-    if(state===S.WAR_END) drawOverlay('大物確保！','最終釣果 '+formatPower(player.power),'タイトルへ','#7df4e8');
+    if(state===S.WAR_END) drawOverlay('大物確保！','最終釣果 '+formatPower(player.power),'エンディング ▶','#7df4e8');
     if(state===S.GAMEOVER){
       if(gameMode==='war') drawOverlay('逃げられた…',(gameOverMsg||'獲物の力が上回った！')+' 釣行 '+Math.round(warProgress()*100)+'%','最初から再挑戦','#ff7a4d');
       else drawOverlay('参った…',(gameOverMsg||'相手のほうが強かった！')+' 修行 '+level,'再挑戦 ↻','#ff7a4d');
