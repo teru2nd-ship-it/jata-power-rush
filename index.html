@@ -134,7 +134,7 @@ function loadImage(src){
   return img;
 }
 function imageReady(img){
-  return img.complete && img.naturalWidth > 0;
+  return Boolean(img && img.complete && img.naturalWidth > 0);
 }
 let W=0, H=0, DPR=1;
 function resize(){
