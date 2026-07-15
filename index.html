@@ -79,6 +79,9 @@ const bonusMovie = document.getElementById('bonusMovie');
 const ART = {
   dojo: loadImage('assets/backgrounds/dojo-tatami.jpg'),
   castle: loadImage('assets/backgrounds/castle-moon.jpg'),
+  fishingRiver: loadImage('assets/backgrounds/fishing-river-pier.jpg'),
+  fishingCoast: loadImage('assets/backgrounds/fishing-rocky-coast.jpg'),
+  fishingOcean: loadImage('assets/backgrounds/fishing-ocean-pier.jpg'),
   samuraiBoss: loadImage('assets/enemies/panda-samurai.png'),
   roninBoss: loadImage('assets/enemies/boss-ronin-pixel.png'),
   horseBoss: loadImage('assets/enemies/boss-horse-general-pixel.png'),
@@ -88,10 +91,29 @@ const ART = {
   bambooEight: loadImage('assets/enemies/bamboo-eight-pixel.png'),
   kunoichiMidBoss: loadImage('assets/enemies/midboss-kunoichi-rabbit-pixel.png'),
   ninjaMidBoss: loadImage('assets/enemies/midboss-ninja-pixel.png'),
+  tunaBoss: loadImage('assets/enemies/final-boss-tuna-pixel.png'),
+  seaBream: loadImage('assets/enemies/fishing/sea-bream-pixel.png'),
+  clam: loadImage('assets/enemies/fishing/clam-pixel.png'),
+  pearlShell: loadImage('assets/enemies/fishing/pearl-shell-pixel.png'),
+  redCrab: loadImage('assets/enemies/fishing/red-crab-pixel.png'),
+  flounder: loadImage('assets/enemies/fishing/flounder-pixel.png'),
+  lobster: loadImage('assets/enemies/fishing/lobster-pixel.png'),
+  greenFish: loadImage('assets/enemies/fishing/green-fish-pixel.png'),
   blackCatHero: loadImage('assets/heroes/black-cat-samurai.png'),
   tabbyCatHero: loadImage('assets/heroes/brown-tabby-samurai.png'),
+  blackCatFisher: loadImage('assets/heroes/black-cat-fisher.png'),
+  tabbyCatFisher: loadImage('assets/heroes/brown-tabby-fisher.png'),
 };
 const BOSS_ART = [ART.samuraiBoss, ART.roninBoss, ART.horseBoss, ART.boarBoss];
+const FISHING_ART = {
+  'sea-bream':ART.seaBream,
+  clam:ART.clam,
+  'pearl-shell':ART.pearlShell,
+  crab:ART.redCrab,
+  flounder:ART.flounder,
+  lobster:ART.lobster,
+  'green-fish':ART.greenFish,
+};
 function bossArtForLevel(stage){
   return BOSS_ART[(stage-1) % BOSS_ART.length];
 }
@@ -102,6 +124,9 @@ function bambooArtForValue(value){
 }
 function midBossArtForLevel(stage){
   return stage%2===0 ? ART.kunoichiMidBoss : ART.ninjaMidBoss;
+}
+function choiceNinjaArt(kind){
+  return kind==='mul' ? ART.ninjaMidBoss : ART.kunoichiMidBoss;
 }
 function loadImage(src){
   const img = new Image();
@@ -211,7 +236,16 @@ const SFX = {
 
 // ---------- ゲーム状態 ----------
 const FINAL_STAGE = 30;
-const S = { TITLE:0, PLAY:1, ATTACK:2, DEAD:3, CLEAR:4, GAMEOVER:5, ENDING:6 };
+const WAR_GROUPS = 9;
+const WAR_GROUP_SIZE = 6;
+const WAR_START_POWER = 5;
+const FISHING_CATCHES = [
+  ['clam','sea-bream','pearl-shell','flounder','crab','green-fish'],
+  ['sea-bream','crab','flounder','clam','green-fish','lobster'],
+  ['pearl-shell','flounder','crab','sea-bream','lobster','green-fish'],
+];
+const FISHING_BIG_CATCHES = ['sea-bream','lobster','green-fish'];
+const S = { TITLE:0, PLAY:1, ATTACK:2, DEAD:3, CLEAR:4, GAMEOVER:5, ENDING:6, WAR_END:7 };
 let state = S.TITLE;
 let level = 1;
 let bestLevel = Number(localStorage.getItem('jataPowerRushBest') || 1);
@@ -219,6 +253,13 @@ let selectedHero = localStorage.getItem('jataPowerRushHero') === 'tabby' ? 'tabb
 let endlessMode = false;
 let noMissRun = true;
 let endingBonusUnlocked = false;
+let gameMode = 'training';
+let warCameraY = 0;
+let warWorldHeight = 0;
+let warStartY = 0;
+let warBossY = 0;
+let warInitialCameraY = 0;
+let warGroupCenters = [];
 let player = { power:5, x:0, y:0, tx:0, ty:0, scale:1, face:1, walk:0 };
 let enemies = [];   // {x,y,val,r,type,dead,popT,shake,hue,bob}
 let particles = []; // {x,y,vx,vy,life,col,size,txt}
@@ -268,8 +309,8 @@ function genLevel(n){
   const usedSpots = [{x:bossX,y:bossY,gap:Math.max(88,minSpacing)}];
   if(plannedGateY!==null){
     usedSpots.push(
-      {x:W*0.30,y:plannedGateY,gap:Math.max(72,minSpacing)},
-      {x:W*0.70,y:plannedGateY,gap:Math.max(72,minSpacing)}
+      {x:W*0.30,y:plannedGateY,gap:Math.max(96,minSpacing)},
+      {x:W*0.70,y:plannedGateY,gap:Math.max(96,minSpacing)}
     );
   }
   function spot(){
@@ -301,16 +342,16 @@ function genLevel(n){
   });
   const sumAll = cum - startPower; // 敵の合計
 
-  // 中ボス（レベル2以降ときどき）：通常敵と同じ大小判定で倒す。
-  let midBossVal = 0;
-  const forceMidBoss = new URLSearchParams(window.location.search).get('midboss')==='1';
-  if(n>=2 && (forceMidBoss || Math.random()<0.5)){
+  // 追加の竹（従来の中ボス枠）：数字バランスを変えず通常敵として扱う。
+  let bonusBambooVal = 0;
+  const forceBonusBamboo = new URLSearchParams(window.location.search).get('bonusbamboo')==='1';
+  if(n>=2 && (forceBonusBamboo || Math.random()<0.5)){
     const p = spot();
-    midBossVal = Math.max(2,Math.floor(cum*0.10));
-    enemies.push(mkEnemy(p.x,p.y, midBossVal, 'midboss'));
+    bonusBambooVal = Math.max(2,Math.floor(cum*0.10));
+    enemies.push(mkEnemy(p.x,p.y, bonusBambooVal, 'grunt'));
   }
 
-  // ×2オーブ（レベル2以降）：取るタイミングが命
+  // ×2マタタビ（レベル2以降）：最後に取るほど伸びる猫用バフ。
   let hasMult = false;
   if(n>=2){
     hasMult = true;
@@ -318,7 +359,7 @@ function genLevel(n){
     enemies.push(mkEnemy(p.x,p.y, 2, 'mult'));
   }
 
-  // 分岐ゲート（レベル3以降）：「+A」vs「×1.5」の二択、片方選ぶと片方消える
+  // 忍術の二択（レベル3以降）：「+A」vs「×1.5」、選ばなかった忍者は退く。
   let gateAdd = 0, hasGate = false;
   if(n>=3){
     hasGate = true;
@@ -328,11 +369,11 @@ function genLevel(n){
     enemies.push(g1, g2);
   }
 
-  // ボス：最適ルート（全部食う→+ゲート→×1.5or×2を最後）の 88〜94%
-  // → ×2を序盤で使うと届かない＝「後半に取らないと詰む」
-  const base = startPower + sumAll + midBossVal;
-  const routeA = hasGate ? (base + gateAdd) : base;           // +Aゲート側
-  const routeB = hasGate ? Math.floor(base * 1.5) : base;      // ×1.5ゲート側
+  // ボス：最適ルート（竹を全部斬る→忍術を選ぶ→マタタビを最後に取る）の 88〜94%
+  // → マタタビを序盤で使うと届かない＝「後半に取らないと詰む」
+  const base = startPower + sumAll + bonusBambooVal;
+  const routeA = hasGate ? (base + gateAdd) : base;           // 加算の術
+  const routeB = hasGate ? Math.floor(base * 1.5) : base;      // 増幅の術
   const best = Math.max(routeA, routeB) * (hasMult ? 2 : 1);
   const bossVal = Math.max(2, Math.min(best-1, Math.floor(best * (0.88 + Math.random()*0.06))));
 
@@ -343,6 +384,97 @@ function genLevel(n){
   player.y = player.ty = H*(shortStage ? 0.89 : 0.74);
   player.scale = 1;
 }
+
+function clamp(value,min,max){ return Math.max(min,Math.min(max,value)); }
+function warScreenY(worldY){ return gameMode==='war' ? worldY-warCameraY : worldY; }
+function warTopInset(){ return Math.max(110,H*0.17); }
+function warProgress(){
+  if(gameMode!=='war' || warInitialCameraY<=0) return 0;
+  return clamp((warInitialCameraY-warCameraY)/warInitialCameraY,0,1);
+}
+function currentWarGroup(){
+  const field=enemies.filter(en=>!en.dead && en.type!=='boss');
+  if(!field.length) return WAR_GROUPS;
+  return Math.min(...field.map(en=>en.group));
+}
+function genWarMap(){
+  enemies=[];
+  gameMode='war';
+  level=FINAL_STAGE;
+  warWorldHeight=H*10.2;
+  warStartY=warWorldHeight-H*0.18;
+  warBossY=Math.max(150,H*0.20);
+  warGroupCenters=[];
+
+  const routeDistance=warStartY-warBossY;
+  const groupStep=routeDistance/(WAR_GROUPS+0.3);
+  const slots=[
+    {x:0.18,dy:0.18},{x:0.50,dy:0.18},{x:0.82,dy:0.18},
+    {x:0.18,dy:-0.14},{x:0.50,dy:-0.14},{x:0.82,dy:-0.14},
+  ];
+  const ratios=[0.25,0.42,0.68,0.95,1.35,1.90];
+  const layouts=[
+    [0,4,1,3,5,2],
+    [3,0,5,1,2,4],
+    [4,2,0,5,1,3],
+  ];
+  let projectedPower=WAR_START_POWER;
+
+  for(let group=0;group<WAR_GROUPS;group++){
+    const centerY=warStartY-(group+0.35)*groupStep;
+    warGroupCenters.push(centerY);
+    const groupStartPower=projectedPower;
+    const values=ratios.map(ratio=>Math.max(1,Math.floor(groupStartPower*ratio)));
+    const layout=layouts[group%layouts.length];
+    for(let local=0;local<WAR_GROUP_SIZE;local++){
+      const valueIndex=layout[local];
+      const value=values[valueIndex];
+      const slot=slots[local];
+      const type=[2,5,8].includes(group) && valueIndex===ratios.length-1 ? 'midboss' : 'grunt';
+      const enemy=mkEnemy(W*slot.x,centerY+H*slot.dy,value,type);
+      enemy.catchKind=type==='midboss'
+        ? FISHING_BIG_CATCHES[Math.floor(group/3)]
+        : FISHING_CATCHES[group%FISHING_CATCHES.length][local];
+      enemy.group=group;
+      enemy.order=group*WAR_GROUP_SIZE+local;
+      enemy.valueRank=valueIndex;
+      enemies.push(enemy);
+    }
+    projectedPower+=values.reduce((sum,value)=>sum+value,0);
+  }
+
+  const bossValue=Math.min(projectedPower-1,Math.max(100000001,Math.floor(projectedPower*0.84)));
+  const boss=mkEnemy(W*0.5,warBossY,bossValue,'boss');
+  boss.catchKind='tuna';
+  boss.r=H<650?100:120;
+  boss.group=WAR_GROUPS;
+  boss.order=WAR_GROUPS*WAR_GROUP_SIZE;
+  enemies.push(boss);
+
+  player.power=WAR_START_POWER;
+  player.x=player.tx=W*0.5;
+  player.y=player.ty=warStartY;
+  player.scale=1;
+  warCameraY=clamp(warGroupCenters[0]-H*0.44,0,Math.max(0,warWorldHeight-H));
+  warInitialCameraY=warCameraY;
+}
+
+window.addEventListener('resize',()=>{
+  if(gameMode!=='war' || state===S.TITLE) return;
+  const progress=warProgress();
+  const currentPower=player.power;
+  const deadOrders=new Set(enemies.filter(en=>en.dead).map(en=>en.order));
+  genWarMap();
+  enemies.forEach(en=>{
+    if(deadOrders.has(en.order)){ en.dead=true; en.popT=1; }
+  });
+  player.power=currentPower;
+  const activeGroup=currentWarGroup();
+  player.y=player.ty=activeGroup<WAR_GROUPS ? warGroupCenters[activeGroup]+H*0.48 : warBossY+H*0.58;
+  warCameraY=warInitialCameraY*(1-progress);
+  attackTarget=null;
+  if(state===S.ATTACK || state===S.DEAD) state=S.PLAY;
+});
 
 function mkEnemy(x,y,val,type){
   const compact = H < 650 ? 0.82 : 1;
@@ -366,6 +498,17 @@ function titleHeroLayout(){
     { key:'tabby', x:W/2+gap, y, h, label:'茶トラ侍' },
   ];
 }
+function titleModeLayout(){
+  const compact=H<650;
+  const gap=8;
+  const w=Math.min(174,(W-28-gap)/2);
+  const h=compact?48:52;
+  const y=H*(compact?0.91:0.90);
+  return [
+    {mode:'training',x:W/2-w/2-gap/2,y,w,h,label:'修行開始！'},
+    {mode:'war',x:W/2+w/2+gap/2,y,w,h,label:'魚釣り編'},
+  ];
+}
 function rememberBest(stage){
   if(stage <= bestLevel) return;
   bestLevel = stage;
@@ -384,25 +527,41 @@ function onTap(e){
       SFX.choice();
       return;
     }
-    startGame(); return;
+    const modeHit=titleModeLayout().find(item=>
+      p.x>item.x-item.w/2 && p.x<item.x+item.w/2 && p.y>item.y-item.h/2 && p.y<item.y+item.h/2
+    );
+    if(modeHit){
+      if(modeHit.mode==='war') startFishingGame(); else startGame();
+    }
+    return;
   }
   if(state === S.CLEAR){
-    level++;
-    rememberBest(level);
-    genLevel(level); state=S.PLAY; return;
+    if(gameMode!=='war'){
+      level++;
+      rememberBest(level);
+      genLevel(level);
+    }
+    state=S.PLAY; return;
   }
   if(state === S.ENDING){
     returnToTitle(); return;
   }
-  if(state === S.GAMEOVER){ genLevel(level); state=S.PLAY; return; }
+  if(state === S.WAR_END){ returnToTitle(); return; }
+  if(state === S.GAMEOVER){
+    if(gameMode==='war') genWarMap();
+    else genLevel(level);
+    state=S.PLAY; return;
+  }
   if(state !== S.PLAY) return;
 
   // 敵タップ判定
   let hit=null;
   for(const en of enemies){
     if(en.dead) continue;
+    const enemyScreenY=warScreenY(en.y);
+    if(gameMode==='war' && (enemyScreenY<warTopInset() || enemyScreenY>H+20)) continue;
     const rr = en.r + 22;
-    if(Math.hypot(en.x-p.x, en.y-p.y) < rr){ hit=en; break; }
+    if(Math.hypot(en.x-p.x, enemyScreenY-p.y) < rr){ hit=en; break; }
   }
   if(!hit) return;
 
@@ -423,7 +582,12 @@ cv.addEventListener('mousedown', onTap);
 
 function startGame(){
   const params = new URLSearchParams(window.location.search);
+  if(params.get('mode')==='fishing' || params.get('mode')==='war'){
+    startFishingGame();
+    return;
+  }
   hideEndingExperience();
+  gameMode='training';
   const heroParam = params.get('hero');
   if(heroParam === 'black' || heroParam === 'tabby'){
     selectedHero = heroParam;
@@ -446,6 +610,29 @@ function startGame(){
   }
   SFX.start();
 }
+
+function startFishingGame(){
+  const params=new URLSearchParams(window.location.search);
+  hideEndingExperience();
+  const heroParam=params.get('hero');
+  if(heroParam==='black' || heroParam==='tabby'){
+    selectedHero=heroParam;
+    localStorage.setItem('jataPowerRushHero',selectedHero);
+  }
+  noMissRun=false;
+  endingBonusUnlocked=false;
+  gameOverMsg='';
+  particles=[];
+  floatTexts=[];
+  attackTarget=null;
+  genWarMap();
+  state=S.PLAY;
+  startBgm();
+  SFX.start();
+}
+
+// Legacy test links can still open the renamed mode.
+function startWarGame(){ startFishingGame(); }
 
 function showEndingCard(){
   stopBgm();
@@ -484,6 +671,13 @@ function returnToTitle(){
   stopBgm();
   level=1;
   endlessMode=false;
+  gameMode='training';
+  warCameraY=0;
+  warWorldHeight=0;
+  warStartY=0;
+  warBossY=0;
+  warInitialCameraY=0;
+  warGroupCenters=[];
   noMissRun=true;
   endingBonusUnlocked=false;
   gameOverMsg='';
@@ -525,6 +719,22 @@ function update(dt){
     if(en.dead && en.popT<1) en.popT += dt*4;
   });
 
+  if(gameMode==='war'){
+    if(state===S.PLAY){
+      const activeGroup=currentWarGroup();
+      const targetY=activeGroup<WAR_GROUPS ? warGroupCenters[activeGroup]+H*0.18 : warBossY+H*0.42;
+      if(player.y>targetY+H*0.18){
+        player.y-=Math.min(H*0.75*dt,player.y-targetY-H*0.18);
+        player.walk+=dt*10;
+      }
+    }
+    const activeGroup=currentWarGroup();
+    const desiredCamera=activeGroup<WAR_GROUPS
+      ? clamp(warGroupCenters[activeGroup]-H*0.44,0,Math.max(0,warWorldHeight-H))
+      : 0;
+    warCameraY+=(desiredCamera-warCameraY)*Math.min(1,dt*1.8);
+  }
+
   if(state === S.ATTACK && attackTarget){
     attackT += dt;
     const tg = attackTarget;
@@ -548,12 +758,12 @@ function update(dt){
           shakeScreen=4;
           tg.dead=true; tg.popT=0;
           if(tg.type==='mult'){
-            SFX.chest(); flashCol='#c07dff'; flashA=0.4;
-            burst(tg.x,tg.y,'#c07dff',18);
+            SFX.chest(); flashCol='#9cff6b'; flashA=0.4;
+            burst(tg.x,tg.y,'#9cff6b',18);
             player.power *= 2;
-            floatUp(tg.x, tg.y-40, '×2!', '#c07dff');
+            floatUp(tg.x, tg.y-40, 'マタタビ ×2!', '#9cff6b');
           } else if(tg.type==='gate'){
-            // 相方ゲートを消す
+            // 選ばなかった忍者は退く。
             enemies.forEach(e=>{ if(e.type==='gate' && e!==tg && e.pair===tg.pair){ e.dead=true; e.popT=0; } });
             SFX.chest(); flashCol='#5ad1ff'; flashA=0.35;
             burst(tg.x,tg.y,'#5ad1ff',16);
@@ -568,7 +778,7 @@ function update(dt){
             SFX.eat();
             burst(tg.x,tg.y,'#ff7a4d',16);
             player.power += tg.val;
-            floatUp(tg.x, tg.y-40, '+'+tg.val, '#7dff8a');
+            floatUp(tg.x, tg.y-40, '+'+formatPower(tg.val), '#7dff8a');
           }
           SFX.grow();
           player.scale = 1.25; // 食べたら一瞬デカくなる
@@ -581,19 +791,23 @@ function update(dt){
         // 残敵チェック
         const bossAlive = enemies.some(e=>!e.dead && e.type==='boss');
         if(!bossAlive){
-          rememberBest(level);
-          if(level===FINAL_STAGE && !endlessMode){
+          if(gameMode==='war'){
+            state=S.WAR_END;
+            stopBgm();
+          } else if(level===FINAL_STAGE && !endlessMode){
+            rememberBest(level);
             state=S.ENDING;
             endingBonusUnlocked=noMissRun;
             showEndingCard();
           } else {
+            rememberBest(level);
             state=S.CLEAR;
           }
           SFX.clear(); flashCol='#7dff8a'; flashA=0.4;
         }
         else if(isStuck()){ // 保険：倒せる敵ゼロ＝詰み → 自動リトライ画面
           noMissRun=false;
-          gameOverMsg='倒せる敵がいない…詰み！';
+          gameOverMsg=gameMode==='war'?'これ以上釣れる獲物がいない…':'倒せる敵がいない…詰み！';
           shakeScreen=6; flashCol='#e33'; flashA=0.5; SFX.lose();
           state = S.GAMEOVER;
         }
@@ -616,8 +830,14 @@ function update(dt){
 let deadT=0;
 let gameOverMsg='';
 function isStuck(){
-  const alive = enemies.filter(e=>!e.dead);
+  let alive = enemies.filter(e=>!e.dead);
   if(alive.length===0) return false;
+  if(gameMode==='war'){
+    const activeGroup=currentWarGroup();
+    alive=activeGroup<WAR_GROUPS
+      ? alive.filter(e=>e.type!=='boss' && e.group===activeGroup)
+      : alive.filter(e=>e.type==='boss');
+  }
   return !alive.some(e=>e.type==='mult' || e.type==='gate' || e.val < player.power);
 }
 
@@ -636,10 +856,30 @@ function numBadge(x,y,txt,col='#fff',stroke='#c92a2a',size=26){
   cx.fillStyle=col; cx.fillText(txt,x,y);
   cx.restore();
 }
+function formatPower(value){
+  const n=Math.max(0,Math.floor(Number(value)||0));
+  if(n<10000) return String(n);
+  if(n>=100000000){
+    const oku=Math.floor(n/100000000);
+    const remainder=n%100000000;
+    if(remainder===0) return oku+'億';
+    if(remainder<10000) return oku+'億'+remainder;
+    return oku+'億'+Math.floor(remainder/10000)+'万';
+  }
+  const unit=n>=100000000?'億':'万';
+  const base=unit==='億'?100000000:10000;
+  const amount=n/base;
+  const digits=amount>=100?0:amount>=10?1:2;
+  let text=amount.toFixed(digits);
+  if(text.includes('.')) text=text.replace(/0+$/,'').replace(/\.$/,'');
+  return text+unit;
+}
 
 // ---------- キャラ描画 ----------
 function drawHero(x,y,scale,face){
-  const art = selectedHero === 'tabby' ? ART.tabbyCatHero : ART.blackCatHero;
+  const art = gameMode==='war'
+    ? (selectedHero==='tabby' ? ART.tabbyCatFisher : ART.blackCatFisher)
+    : (selectedHero==='tabby' ? ART.tabbyCatHero : ART.blackCatHero);
   if(!imageReady(art)){ drawHeroFallback(x,y,scale,face); return; }
   cx.save();
   cx.translate(x,y); cx.scale(scale*face, scale);
@@ -648,7 +888,7 @@ function drawHero(x,y,scale,face){
   cx.fillStyle='rgba(0,0,0,0.28)';
   cx.beginPath(); cx.ellipse(0,35,28,8,0,0,Math.PI*2); cx.fill();
   cx.translate(0,Math.sin(player.walk)*1.5);
-  const spriteH = H < 650 ? 80 : 92;
+  const spriteH = gameMode==='war' ? (H<650?94:108) : (H<650?80:92);
   const spriteW = art.naturalWidth * (spriteH/art.naturalHeight);
   cx.imageSmoothingEnabled=false;
   cx.drawImage(art,-spriteW/2,35-spriteH,spriteW,spriteH);
@@ -673,12 +913,25 @@ function drawHeroFallback(x,y,scale,face){
   cx.strokeStyle='#b9aa90'; cx.lineWidth=2; roundRect(-16,-14,32,30,10); cx.stroke();
   cx.fillStyle='#a52d2d';
   roundRect(-16,8,32,6,2); cx.fill();
-  // 木刀
-  cx.save(); cx.translate(20,-4); cx.rotate(-0.5);
-  cx.fillStyle='#a86f3c'; roundRect(-3,-34,7,34,3); cx.fill();
-  cx.fillStyle='#d59a57'; roundRect(-3,-34,3.5,34,2); cx.fill();
-  cx.fillStyle='#1f3a5f'; roundRect(-6,-2,13,6,3); cx.fill();
-  cx.restore();
+  if(gameMode==='war'){
+    // 竹竿とタモ網
+    cx.strokeStyle='#b87b36'; cx.lineWidth=5;
+    cx.beginPath(); cx.moveTo(-11,5); cx.lineTo(-28,-58); cx.stroke();
+    cx.strokeStyle='#e8eef5'; cx.lineWidth=1.5;
+    cx.beginPath(); cx.moveTo(-28,-58); cx.lineTo(-35,-6); cx.stroke();
+    cx.fillStyle='#e34f55'; cx.beginPath(); cx.arc(-35,-4,4,0,Math.PI*2); cx.fill();
+    cx.strokeStyle='#b87b36'; cx.lineWidth=4;
+    cx.beginPath(); cx.moveTo(13,5); cx.lineTo(27,28); cx.stroke();
+    cx.strokeStyle='#d9e2e8'; cx.lineWidth=2;
+    cx.beginPath(); cx.arc(31,32,13,0,Math.PI*2); cx.stroke();
+  } else {
+    // 木刀
+    cx.save(); cx.translate(20,-4); cx.rotate(-0.5);
+    cx.fillStyle='#a86f3c'; roundRect(-3,-34,7,34,3); cx.fill();
+    cx.fillStyle='#d59a57'; roundRect(-3,-34,3.5,34,2); cx.fill();
+    cx.fillStyle='#1f3a5f'; roundRect(-6,-2,13,6,3); cx.fill();
+    cx.restore();
+  }
   // 頭
   cx.fillStyle='#ffd9b3';
   cx.beginPath(); cx.arc(0,-28,15,0,Math.PI*2); cx.fill();
@@ -723,55 +976,198 @@ function drawHeroChoice(item){
   cx.restore();
 }
 
+function drawFishingCatch(en){
+  const kind=en.catchKind||'fish';
+  const boss=en.type==='boss';
+  const big=en.type==='midboss';
+  if(boss && imageReady(ART.tunaBoss)){
+    const spriteW=Math.min(W*0.72,H<650?220:280);
+    const spriteH=ART.tunaBoss.naturalHeight*(spriteW/ART.tunaBoss.naturalWidth);
+    const labelY=H<650?-62:-78;
+    cx.save();
+    cx.imageSmoothingEnabled=false;
+    cx.drawImage(ART.tunaBoss,-spriteW/2,-spriteH*0.5,spriteW,spriteH);
+    cx.restore();
+    numBadge(0,labelY+30,formatPower(en.val),'#fff','#174b6b',H<650?30:34);
+    numBadge(0,labelY,'巨大マグロ','#ffd75e','#174b6b',H<650?14:16);
+    return;
+  }
+  const flip=(en.order||0)%2===0?1:-1;
+  const fishingArt=FISHING_ART[kind];
+  if(imageReady(fishingArt)){
+    const maxW=big?(H<650?82:96):(H<650?58:68);
+    const maxH=big?(H<650?76:88):(H<650?52:62);
+    const artScale=Math.min(maxW/fishingArt.naturalWidth,maxH/fishingArt.naturalHeight);
+    const spriteW=fishingArt.naturalWidth*artScale;
+    const spriteH=fishingArt.naturalHeight*artScale;
+    cx.fillStyle='rgba(0,0,0,0.24)';
+    cx.beginPath(); cx.ellipse(0,spriteH*0.42,Math.max(20,spriteW*0.38),6,0,0,Math.PI*2); cx.fill();
+    cx.save();
+    cx.scale(flip,1);
+    cx.imageSmoothingEnabled=false;
+    cx.drawImage(fishingArt,-spriteW/2,-spriteH/2,spriteW,spriteH);
+    cx.restore();
+    const badgeY=-spriteH/2-(big?19:15);
+    numBadge(0,badgeY,formatPower(en.val),'#fff',big?'#8a334a':'#1f6275',big?28:24);
+    if(big) numBadge(0,badgeY-27,'大物','#fff4cf','#8a334a',13);
+    return;
+  }
+  const palette=['#46b7c7','#f0a43c','#ef7188','#5f91d8','#78bd67'];
+  const bodyCol=kind==='tuna'?'#2777a8':kind==='bonito'?'#356f91':palette[(en.group||0)%palette.length];
+  const outline='#17304d';
+  cx.fillStyle='rgba(0,0,0,0.24)';
+  cx.beginPath(); cx.ellipse(0,boss?34:27,boss?54:big?38:28,boss?11:8,0,0,Math.PI*2); cx.fill();
+  cx.save(); cx.scale(flip,1);
+
+  if(['fish','bonito','tuna'].includes(kind)){
+    const w=kind==='tuna'?106:kind==='bonito'?72:52;
+    const h=kind==='tuna'?42:kind==='bonito'?30:24;
+    cx.fillStyle=bodyCol;
+    cx.beginPath(); cx.ellipse(0,0,w*0.42,h*0.50,0,0,Math.PI*2); cx.fill();
+    cx.strokeStyle=outline; cx.lineWidth=3; cx.stroke();
+    cx.beginPath(); cx.moveTo(-w*0.38,0); cx.lineTo(-w*0.60,-h*0.45); cx.lineTo(-w*0.57,h*0.45); cx.closePath(); cx.fill(); cx.stroke();
+    cx.fillStyle=kind==='tuna'?'#f0c64e':'rgba(255,255,255,0.45)';
+    cx.beginPath(); cx.moveTo(-4,-h*0.42); cx.lineTo(12,-h*0.78); cx.lineTo(18,-h*0.30); cx.closePath(); cx.fill();
+    cx.beginPath(); cx.moveTo(-2,h*0.42); cx.lineTo(13,h*0.70); cx.lineTo(18,h*0.28); cx.closePath(); cx.fill();
+    cx.fillStyle='#f7fbff'; cx.beginPath(); cx.arc(w*0.27,-h*0.10,4,0,Math.PI*2); cx.fill();
+    cx.fillStyle='#102332'; cx.beginPath(); cx.arc(w*0.29,-h*0.10,2,0,Math.PI*2); cx.fill();
+    cx.strokeStyle='rgba(255,255,255,0.6)'; cx.lineWidth=2;
+    cx.beginPath(); cx.moveTo(-w*0.10,-h*0.36); cx.quadraticCurveTo(w*0.03,0,-w*0.10,h*0.36); cx.stroke();
+  }else if(kind==='crab'){
+    cx.fillStyle='#db593e'; cx.strokeStyle=outline; cx.lineWidth=3;
+    cx.beginPath(); cx.ellipse(0,3,24,17,0,0,Math.PI*2); cx.fill(); cx.stroke();
+    [-1,1].forEach(side=>{
+      cx.beginPath(); cx.moveTo(side*16,3); cx.lineTo(side*31,-6); cx.lineTo(side*36,-17); cx.stroke();
+      cx.beginPath(); cx.arc(side*39,-19,8,side<0?0:Math.PI,side<0?Math.PI*1.7:Math.PI*0.3); cx.stroke();
+      for(let i=0;i<3;i++){
+        cx.beginPath(); cx.moveTo(side*(13+i*4),11); cx.lineTo(side*(24+i*6),24); cx.stroke();
+      }
+    });
+    cx.fillStyle='#fff'; cx.beginPath(); cx.arc(-8,-8,4,0,Math.PI*2); cx.arc(8,-8,4,0,Math.PI*2); cx.fill();
+    cx.fillStyle=outline; cx.beginPath(); cx.arc(-8,-8,2,0,Math.PI*2); cx.arc(8,-8,2,0,Math.PI*2); cx.fill();
+  }else if(kind==='shrimp' || kind==='lobster'){
+    const lobster=kind==='lobster';
+    cx.strokeStyle=lobster?'#b83c35':'#ef7188'; cx.lineWidth=lobster?13:10; cx.lineCap='round';
+    cx.beginPath(); cx.arc(-2,0,lobster?24:19,-0.65,2.1); cx.stroke();
+    cx.strokeStyle=outline; cx.lineWidth=2;
+    for(let i=0;i<5;i++){
+      const a=-0.45+i*0.45,rad=lobster?24:19;
+      const x=Math.cos(a)*rad-2,y=Math.sin(a)*rad;
+      cx.beginPath(); cx.moveTo(x-5,y-5); cx.lineTo(x+5,y+5); cx.stroke();
+    }
+    cx.strokeStyle=lobster?'#b83c35':'#ef7188'; cx.lineWidth=2;
+    cx.beginPath(); cx.moveTo(14,-16); cx.quadraticCurveTo(38,-30,45,-10); cx.stroke();
+    cx.beginPath(); cx.moveTo(12,-13); cx.quadraticCurveTo(34,-18,41,0); cx.stroke();
+    if(lobster){
+      [-1,1].forEach(side=>{
+        cx.beginPath(); cx.moveTo(side*15,-3); cx.lineTo(side*35,-13); cx.stroke();
+        cx.beginPath(); cx.arc(side*39,-14,7,0,Math.PI*2); cx.stroke();
+      });
+    }
+  }else{
+    const octopus=kind==='octopus';
+    cx.fillStyle=octopus?'#d75c77':'#8a70d6'; cx.strokeStyle=outline; cx.lineWidth=3;
+    cx.beginPath();
+    if(octopus) cx.ellipse(0,-5,24,22,0,0,Math.PI*2);
+    else { cx.moveTo(0,-30); cx.quadraticCurveTo(26,-7,19,15); cx.lineTo(-19,15); cx.quadraticCurveTo(-26,-7,0,-30); }
+    cx.fill(); cx.stroke();
+    cx.fillStyle='#fff'; cx.beginPath(); cx.arc(-8,-8,4,0,Math.PI*2); cx.arc(8,-8,4,0,Math.PI*2); cx.fill();
+    cx.fillStyle=outline; cx.beginPath(); cx.arc(-8,-8,2,0,Math.PI*2); cx.arc(8,-8,2,0,Math.PI*2); cx.fill();
+    cx.strokeStyle=octopus?'#d75c77':'#8a70d6'; cx.lineWidth=5; cx.lineCap='round';
+    for(let i=-2;i<=2;i++){
+      cx.beginPath(); cx.moveTo(i*7,13); cx.quadraticCurveTo(i*11,25+(i%2)*5,i*8,32); cx.stroke();
+    }
+  }
+  cx.restore();
+  const badgeY=boss?-55:big?-48:-39;
+  numBadge(0,badgeY,formatPower(en.val),'#fff',boss?'#174b6b':big?'#8a334a':'#1f6275',boss?34:big?28:24);
+  if(boss) numBadge(0,badgeY-32,'巨大マグロ','#ffd75e','#174b6b',16);
+  else if(big) numBadge(0,badgeY-27,'大物','#fff4cf','#8a334a',13);
+}
+
 function drawEnemy(en){
   if(en.dead && en.popT>=1) return;
+  const screenY=warScreenY(en.y);
+  if(gameMode==='war' && (screenY<warTopInset() || screenY>H+100)) return;
   const pop = en.dead ? 1+en.popT*0.6 : 1;
   const alpha = en.dead ? 1-en.popT : 1;
   const bobY = Math.sin(en.bob)*3;
   const shX = en.shake>0 ? Math.sin(time*60)*en.shake : 0;
   cx.save();
   cx.globalAlpha = alpha;
-  cx.translate(en.x+shX, en.y+bobY);
+  cx.translate(en.x+shX, screenY+bobY);
   cx.scale(pop,pop);
+
+  if(gameMode==='war'){
+    drawFishingCatch(en);
+    cx.restore();
+    return;
+  }
 
   if(en.type==='mult'){
     const compact = H < 650 ? 0.82 : 1;
     cx.save(); cx.scale(compact,compact);
-    // ×2オーブ（紫クリスタル）
+    // ×2マタタビの秘薬
     const pl = (Math.sin(time*3+en.bob)+1)/2;
     cx.fillStyle='rgba(0,0,0,0.25)';
     cx.beginPath(); cx.ellipse(0,26,20,6,0,0,Math.PI*2); cx.fill();
-    cx.save(); cx.rotate(Math.PI/4);
-    const og = cx.createLinearGradient(-20,-20,20,20);
-    og.addColorStop(0,'#e0b3ff'); og.addColorStop(1,'#8a3de0');
-    cx.fillStyle=og; roundRect(-18,-18,36,36,8); cx.fill();
-    cx.strokeStyle='#5e1e9e'; cx.lineWidth=3; roundRect(-18,-18,36,36,8); cx.stroke();
-    cx.restore();
+    const glow = cx.createRadialGradient(0,0,4,0,0,34);
+    glow.addColorStop(0,'rgba(214,255,146,0.7)');
+    glow.addColorStop(1,'rgba(104,207,79,0)');
+    cx.fillStyle=glow; cx.beginPath(); cx.arc(0,0,34+pl*3,0,Math.PI*2); cx.fill();
+    cx.fillStyle='#72512d'; roundRect(-7,-29,14,10,3); cx.fill();
+    cx.strokeStyle='#d6b267'; cx.lineWidth=2; roundRect(-7,-29,14,10,3); cx.stroke();
+    const mg = cx.createLinearGradient(-18,-20,18,24);
+    mg.addColorStop(0,'#d6ff8a'); mg.addColorStop(0.45,'#65c94f'); mg.addColorStop(1,'#2d7b3d');
+    cx.fillStyle=mg;
+    cx.beginPath();
+    cx.moveTo(-9,-21); cx.lineTo(9,-21); cx.lineTo(20,-8);
+    cx.lineTo(17,18); cx.lineTo(0,27); cx.lineTo(-17,18); cx.lineTo(-20,-8);
+    cx.closePath(); cx.fill();
+    cx.strokeStyle='#1f5c32'; cx.lineWidth=3; cx.stroke();
+    cx.strokeStyle='#e34f55'; cx.lineWidth=4;
+    cx.beginPath(); cx.moveTo(-16,-9); cx.quadraticCurveTo(0,-3,16,-9); cx.stroke();
+    cx.fillStyle='#f5ffe7';
+    cx.beginPath(); cx.ellipse(-6,4,5,9,-0.65,0,Math.PI*2); cx.fill();
+    cx.beginPath(); cx.ellipse(6,4,5,9,0.65,0,Math.PI*2); cx.fill();
+    cx.fillStyle='#d6ff8a'; cx.beginPath(); cx.arc(0,8,4,0,Math.PI*2); cx.fill();
     cx.globalAlpha = alpha*(0.4+pl*0.6);
-    cx.strokeStyle='#e0b3ff'; cx.lineWidth=2;
+    cx.strokeStyle='#d6ff8a'; cx.lineWidth=2;
     cx.beginPath(); cx.arc(0,0,30+pl*4,0,Math.PI*2); cx.stroke();
     cx.globalAlpha = alpha;
-    numBadge(0,0,'×2','#fff','#5e1e9e',22);
+    numBadge(0,3,'×2','#fff','#245b31',22);
+    if(H>=650){
+      cx.font='800 12px '+FONT_JP; cx.textAlign='center';
+      cx.lineWidth=4; cx.strokeStyle='#17304d'; cx.strokeText('マタタビ',0,-40);
+      cx.fillStyle='#d6ff8a'; cx.fillText('マタタビ',0,-40);
+    }
     cx.restore();
   } else if(en.type==='gate'){
     const compact = H < 650 ? 0.82 : 1;
     cx.save(); cx.scale(compact,compact);
-    // 分岐ゲート（片方選ぶともう片方消える）
-    const gw=76, gh=52;
+    // 忍術の二択（片方を選ぶともう片方は退く）
     const isMul = en.gkind==='mul';
-    const col1 = isMul ? '#2a7fb8' : '#b86a2a';
-    const col2 = isMul ? '#5ad1ff' : '#ffb35a';
-    cx.globalAlpha = alpha*0.9;
-    const gg = cx.createLinearGradient(0,-gh/2,0,gh/2);
-    gg.addColorStop(0,col2); gg.addColorStop(1,col1);
-    cx.fillStyle=gg; roundRect(-gw/2,-gh/2,gw,gh,12); cx.fill();
-    cx.strokeStyle='rgba(255,255,255,0.7)'; cx.lineWidth=3;
-    roundRect(-gw/2,-gh/2,gw,gh,12); cx.stroke();
-    cx.globalAlpha = alpha;
-    numBadge(0,0, isMul?('×'+en.val):('+'+en.val), '#fff', col1, 24);
-    if(H>=650){
-      cx.font='700 12px '+FONT_JP; cx.fillStyle='rgba(255,255,255,0.85)';
-      cx.textAlign='center'; cx.fillText('どっちか一つ', 0, -gh/2-10);
+    const col = isMul ? '#174f9b' : '#8b2874';
+    const ninjaArt = choiceNinjaArt(en.gkind);
+    cx.fillStyle='rgba(0,0,0,0.25)';
+    cx.beginPath(); cx.ellipse(0,30,30,8,0,0,Math.PI*2); cx.fill();
+    if(imageReady(ninjaArt)){
+      const maxH=104, maxW=112;
+      const spriteScale=Math.min(maxW/ninjaArt.naturalWidth,maxH/ninjaArt.naturalHeight);
+      const spriteW=ninjaArt.naturalWidth*spriteScale;
+      const spriteH=ninjaArt.naturalHeight*spriteScale;
+      cx.imageSmoothingEnabled=false;
+      cx.drawImage(ninjaArt,-spriteW/2,-spriteH*0.58,spriteW,spriteH);
+      numBadge(0,-spriteH*0.67,isMul?('×'+en.val):('+'+formatPower(en.val)),'#fff',col,23);
+      cx.font='800 12px '+FONT_JP; cx.textAlign='center';
+      cx.lineWidth=4; cx.strokeStyle='#17304d';
+      cx.strokeText(isMul?'増幅の術':'加算の術',0,spriteH*0.49);
+      cx.fillStyle=isMul?'#8edcff':'#ff9ede';
+      cx.fillText(isMul?'増幅の術':'加算の術',0,spriteH*0.49);
+    } else {
+      const gw=76,gh=52;
+      cx.fillStyle=col; roundRect(-gw/2,-gh/2,gw,gh,12); cx.fill();
+      numBadge(0,0,isMul?('×'+en.val):('+'+formatPower(en.val)),'#fff',col,24);
     }
     cx.restore();
   } else {
@@ -781,7 +1177,7 @@ function drawEnemy(en){
     // 影
     cx.fillStyle='rgba(0,0,0,0.25)';
     cx.beginPath(); cx.ellipse(0,R*0.95,R*0.9,R*0.22,0,0,Math.PI*2); cx.fill();
-    const bossArt = boss ? bossArtForLevel(level) : null;
+    const bossArt = boss ? bossArtForLevel(gameMode==='war'?4:level) : null;
     const bambooArt = !boss && !midBoss ? bambooArtForValue(en.val) : null;
     if(boss && imageReady(bossArt)){
       const maxH = Math.min(166, H*0.20);
@@ -791,19 +1187,19 @@ function drawEnemy(en){
       const spriteH = bossArt.naturalHeight * spriteScale;
       cx.imageSmoothingEnabled=false;
       cx.drawImage(bossArt, -spriteW/2, -spriteH*0.66, spriteW, spriteH);
-      numBadge(0,-spriteH*0.48, en.val, '#fff','#53231d',H<650?26:32);
-      numBadge(0,-spriteH*0.70,'師範','#ffd75e','#53231d',H<650?15:17);
-    } else if(midBoss && imageReady(midBossArtForLevel(level))){
+      numBadge(0,-spriteH*0.48, formatPower(en.val), '#fff','#53231d',H<650?26:32);
+      numBadge(0,-spriteH*0.70,gameMode==='war'?'大将軍':'師範','#ffd75e','#53231d',H<650?15:17);
+    } else if(midBoss && imageReady(midBossArtForLevel(gameMode==='war'?(en.group||0)+1:level))){
       const compact = H < 650 ? 0.82 : 1;
       const maxH = 82*compact, maxW = 100*compact;
-      const midBossArt = midBossArtForLevel(level);
+      const midBossArt = midBossArtForLevel(gameMode==='war'?(en.group||0)+1:level);
       const spriteScale = Math.min(maxW/midBossArt.naturalWidth, maxH/midBossArt.naturalHeight);
       const spriteW = midBossArt.naturalWidth * spriteScale;
       const spriteH = midBossArt.naturalHeight * spriteScale;
       cx.imageSmoothingEnabled=false;
       cx.drawImage(midBossArt, -spriteW/2, -spriteH*0.58, spriteW, spriteH);
-      numBadge(0,-spriteH*0.60, en.val, '#fff','#17304d',H<650?24:28);
-      numBadge(0,-spriteH*0.88,'中ボス','#f0d28b','#17304d',H<650?11:13);
+      numBadge(0,-spriteH*0.60, formatPower(en.val), '#fff','#17304d',H<650?24:28);
+      numBadge(0,-spriteH*0.88,gameMode==='war'?'副将':'中ボス','#f0d28b','#17304d',H<650?11:13);
     } else if(!midBoss && imageReady(bambooArt)){
       const compact = H < 650 ? 0.82 : 1;
       const maxH = (en.val<10 ? 78 : en.val<100 ? 74 : 82) * compact;
@@ -813,7 +1209,7 @@ function drawEnemy(en){
       const spriteH = bambooArt.naturalHeight * spriteScale;
       cx.imageSmoothingEnabled=false;
       cx.drawImage(bambooArt, -spriteW/2, -spriteH*0.58, spriteW, spriteH);
-      numBadge(0,-spriteH*0.65, en.val, '#fff','#3d5b19',H<650?21:26);
+      numBadge(0,-spriteH*0.65, formatPower(en.val), '#fff','#3d5b19',H<650?21:26);
     } else {
       // 門下生は数字だけではなく、同じ顔の小さな侍として描く。
       const robeCol = midBoss ? '#27466b' : '#7f342b';
@@ -835,15 +1231,65 @@ function drawEnemy(en){
       roundRect(-R*0.62,R*0.02,R*1.24,R*0.55,8); cx.fill();
       cx.fillStyle='#a52d2d';
       roundRect(-R*0.62,R*0.35,R*1.24,5,2); cx.fill();
-      numBadge(0,-R-(H<650?14:20), en.val, '#fff',badgeCol,H<650?(midBoss?24:21):(midBoss?30:26));
-      if(midBoss) numBadge(0,-R-(H<650?36:50),'中ボス','#f0d28b',badgeCol,H<650?11:13);
+      numBadge(0,-R-(H<650?14:20), formatPower(en.val), '#fff',badgeCol,H<650?(midBoss?24:21):(midBoss?30:26));
+      if(midBoss) numBadge(0,-R-(H<650?36:50),gameMode==='war'?'副将':'中ボス','#f0d28b',badgeCol,H<650?11:13);
     }
   }
   cx.restore();
 }
 
 // ---------- 背景 ----------
+function drawImageCoverRect(img,x,y,w,h){
+  if(!imageReady(img)) return false;
+  const scale=Math.max(w/img.naturalWidth,h/img.naturalHeight);
+  const dw=img.naturalWidth*scale;
+  const dh=img.naturalHeight*scale;
+  cx.save();
+  cx.beginPath(); cx.rect(x,y,w,h); cx.clip();
+  cx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh);
+  cx.restore();
+  return true;
+}
+
+function drawWarBG(){
+  const sectionHeight=warWorldHeight/WAR_GROUPS;
+  const tints=[
+    'rgba(76,154,114,0.03)','rgba(36,136,126,0.04)','rgba(30,128,132,0.05)',
+    'rgba(19,110,128,0.05)','rgba(14,102,130,0.06)','rgba(13,91,126,0.07)',
+    'rgba(10,78,119,0.08)','rgba(9,66,110,0.09)','rgba(5,48,94,0.08)',
+  ];
+  cx.fillStyle='#075f83'; cx.fillRect(0,0,W,H);
+  for(let section=0;section<WAR_GROUPS;section++){
+    const worldTop=warWorldHeight-(section+1)*sectionHeight;
+    const screenTop=worldTop-warCameraY;
+    const screenBottom=screenTop+sectionHeight;
+    if(screenBottom<0 || screenTop>H) continue;
+    const art=section<3 ? ART.fishingRiver : section<8 ? ART.fishingCoast : ART.fishingOcean;
+    const oceanOffset=section===WAR_GROUPS-1 ? (H<650?175:220) : 0;
+    cx.save();
+    if(section%2===1 && section<8){ cx.translate(W,0); cx.scale(-1,1); }
+    if(oceanOffset && imageReady(art)){
+      const tileH=42;
+      for(let y=screenTop;y<screenTop+oceanOffset;y+=tileH){
+        cx.drawImage(art,90,0,420,42,0,y,W,Math.min(tileH,screenTop+oceanOffset-y));
+      }
+    }
+    drawImageCoverRect(art,0,screenTop+oceanOffset,W,sectionHeight+1);
+    cx.restore();
+    cx.fillStyle=tints[section]; cx.fillRect(0,screenTop,W,sectionHeight+1);
+  }
+  const shade=cx.createLinearGradient(0,0,0,H);
+  shade.addColorStop(0,'rgba(3,28,43,0.20)');
+  shade.addColorStop(0.45,'rgba(3,28,43,0.02)');
+  shade.addColorStop(1,'rgba(3,28,43,0.18)');
+  cx.fillStyle=shade; cx.fillRect(0,0,W,H);
+}
+
 function drawBG(){
+  if(gameMode==='war'){
+    drawWarBG();
+    return;
+  }
   const bg = level >= 6 ? ART.castle : ART.dojo;
   if(imageReady(bg)){
     const scale = Math.max(W/bg.naturalWidth, H/bg.naturalHeight);
@@ -865,12 +1311,27 @@ function drawBG(){
 // ---------- UI ----------
 function drawHUD(){
   cx.save();
+  if(gameMode==='war'){
+    const progress=warProgress();
+    const percent=Math.round(progress*100);
+    cx.fillStyle='rgba(11,29,51,0.82)';
+    roundRect(12,12,Math.min(224,W-76),54,8); cx.fill();
+    cx.fillStyle='#ffd75e'; cx.font='900 18px '+FONT_JP; cx.textAlign='left'; cx.textBaseline='middle';
+    cx.fillText('釣行 '+percent+'%',24,31);
+    cx.font='700 11px '+FONT_JP; cx.fillStyle='#f1ead8';
+    cx.fillText('大物を追って沖へ',110,31);
+    const barW=Math.min(200,W-100);
+    cx.fillStyle='rgba(255,255,255,0.16)'; roundRect(24,49,barW,6,3); cx.fill();
+    cx.fillStyle='#ffd75e'; roundRect(24,49,Math.max(3,barW*progress),6,3); cx.fill();
+    cx.restore();
+    return;
+  }
   cx.fillStyle='rgba(11,29,51,0.75)';
   roundRect(12,12,176,44,12); cx.fill();
   cx.fillStyle='#ffd75e'; cx.font='900 20px '+FONT_JP; cx.textAlign='left'; cx.textBaseline='middle';
   cx.fillText('修行 '+level, 26, 34);
   cx.font='700 11px '+FONT_JP; cx.fillStyle='#f1ead8';
-  cx.fillText(level >= 6 ? '城内' : '道場', 132, 35);
+  cx.fillText(level >= 6 ? '城内' : '道場',132,35);
   cx.restore();
 }
 
@@ -918,13 +1379,17 @@ function draw(){
     cx.fillText('自分より小さい数字を選んで力を吸収！', W/2, H*0.45);
     cx.fillText('師範より強くなって修行を突破', W/2, H*0.45+27);
     titleHeroLayout().forEach(drawHeroChoice);
-    const blink = (Math.sin(time*4)+1)/2;
-    const startY=H*(compactTitle?0.91:0.90), startW=Math.min(226,W-60), startH=52;
-    cx.globalAlpha = 0.82+blink*0.18;
-    cx.fillStyle='#a9362a'; roundRect(W/2-startW/2,startY-startH/2,startW,startH,8); cx.fill();
-    cx.strokeStyle='#ffd75e'; cx.lineWidth=3; roundRect(W/2-startW/2,startY-startH/2,startW,startH,8); cx.stroke();
-    cx.font='900 22px '+FONT_JP; cx.fillStyle='#fff4cf';
-    cx.textBaseline='middle'; cx.fillText('修行開始！', W/2, startY);
+    const blink=(Math.sin(time*4)+1)/2;
+    titleModeLayout().forEach(item=>{
+      cx.globalAlpha=item.mode==='war'?1:0.82+blink*0.18;
+      cx.fillStyle=item.mode==='war'?'#0c6f78':'#a9362a';
+      roundRect(item.x-item.w/2,item.y-item.h/2,item.w,item.h,8); cx.fill();
+      cx.strokeStyle=item.mode==='war'?'#7df4e8':'#ffd75e'; cx.lineWidth=3;
+      roundRect(item.x-item.w/2,item.y-item.h/2,item.w,item.h,8); cx.stroke();
+      cx.font='900 '+(compactTitle?16:18)+'px '+FONT_JP;
+      cx.fillStyle='#fff4cf'; cx.textBaseline='middle';
+      cx.fillText(item.label,item.x,item.y);
+    });
     cx.globalAlpha=1;
   } else {
     // 敵（y順ソートで奥→手前）
@@ -939,27 +1404,34 @@ function draw(){
     particles.forEach(pt=>{
       cx.globalAlpha = Math.max(0,pt.life);
       cx.fillStyle = pt.col;
-      cx.beginPath(); cx.arc(pt.x,pt.y,pt.size*pt.life,0,Math.PI*2); cx.fill();
+      cx.beginPath(); cx.arc(pt.x,warScreenY(pt.y),pt.size*pt.life,0,Math.PI*2); cx.fill();
     });
     cx.globalAlpha=1;
     floatTexts.forEach(f=>{
       cx.globalAlpha=Math.max(0,f.life);
-      numBadge(f.x,f.y,f.txt,f.col,'#0b1d33',30);
+      numBadge(f.x,warScreenY(f.y),f.txt,f.col,'#0b1d33',30);
     });
     cx.globalAlpha=1;
     drawHUD();
 
-    if(state===S.CLEAR) drawOverlay('一本！', 'パワー '+player.power+' で修行達成！', '次の修行 ▶', '#7dff8a');
-    if(state===S.GAMEOVER) drawOverlay('参った…', (gameOverMsg||'相手のほうが強かった！')+' 修行 '+level, '再挑戦 ↻', '#ff7a4d');
+    if(state===S.CLEAR){
+      drawOverlay('一本！','パワー '+formatPower(player.power)+' で修行達成！','次の修行 ▶','#7dff8a');
+    }
+    if(state===S.WAR_END) drawOverlay('大物確保！','最終釣果 '+formatPower(player.power),'タイトルへ','#7df4e8');
+    if(state===S.GAMEOVER){
+      if(gameMode==='war') drawOverlay('逃げられた…',(gameOverMsg||'獲物の力が上回った！')+' 釣行 '+Math.round(warProgress()*100)+'%','最初から再挑戦','#ff7a4d');
+      else drawOverlay('参った…',(gameOverMsg||'相手のほうが強かった！')+' 修行 '+level,'再挑戦 ↻','#ff7a4d');
+    }
   }
 
   if(flashA>0){ cx.globalAlpha=flashA; cx.fillStyle=flashCol; cx.fillRect(0,0,W,H); cx.globalAlpha=1; }
   cx.restore();
 }
 function drawHeroWithBadge(){
-  drawHero(player.x, player.y, player.scale, player.face);
+  const screenY=warScreenY(player.y);
+  drawHero(player.x, screenY, player.scale, player.face);
   const g = 1 + Math.min(0.6, Math.log10(Math.max(1,player.power))*0.18);
-  numBadge(player.x, player.y - 72*g, player.power, '#7dff8a', '#1f3a5f', 30);
+  numBadge(player.x, screenY - 72*g, formatPower(player.power), '#7dff8a', '#1f3a5f', 30);
 }
 
 // ---------- ループ ----------
