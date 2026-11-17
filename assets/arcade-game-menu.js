@@ -4,7 +4,7 @@
   window.__jataArcadeMenu=1;
 
   var cfg=window.JATA_ARCADE_MENU||{};
-  var homeUrl=cfg.homeUrl||'https://www.teru44.net/games';
+  var homeUrl=cfg.homeUrl||'https://play.teru44.net/';
   var title=cfg.title||document.title;
   var shareText=cfg.shareText||title+'で遊ぼう！';
   var audioEvent=cfg.audioEvent||'jata-audio-change';
